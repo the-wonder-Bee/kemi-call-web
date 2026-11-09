@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Kemi 视频翻译</title>
+  <meta name="kemi-call-api" content="">
+  <link rel="stylesheet" href="./call.css">
+  <script defer src="./call.js"></script>
+</head>
+<body>
+<main>
+  <header><strong>Kemi</strong><h1>视频翻译 · Video translation</h1></header>
+  <p id="status" role="status">正在读取邀请… / Loading invitation…</p>
+  <section id="setup">
+    <p>对方说 / They speak <strong id="hostLanguage">—</strong></p>
+    <label for="language">我说的语言 / I speak</label>
+    <select id="language" disabled></select>
+    <button id="join" disabled>加入通话 / Join call</button>
+  </section>
+  <section id="media" hidden>
+    <p>对方说 / They speak <strong id="liveHostLanguage">—</strong></p>
+    <div class="video">
+      <video id="remote" autoplay playsinline></video>
+      <video id="local" autoplay muted playsinline></video>
+    </div>
+    <div class="controls">
+      <label for="liveLanguage">我说 / I speak</label>
+      <select id="liveLanguage" disabled></select>
+      <button id="mute" type="button">静音 / Mute</button>
+      <button id="camera" type="button">关闭镜头 / Camera off</button>
+      <button id="end" type="button">挂断 / End</button>
+    </div>
+  </section>
+  <section id="captions" hidden>
+    <h2>实时字幕 / Live captions</h2>
+    <p id="asr" role="status"></p>
+    <div id="messages"></div>
+  </section>
+</main>
+</body>
+</html>
