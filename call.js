@@ -7,7 +7,9 @@ let token, stream, peer, channel, language, negotiation;
 let stopped = false;
 let cursor = 0;
 let revision = 1;
-let failures = 0;
+let pollTimer, polling = false, pollErrorSince;
+let audioSender, microphoneRecovery = false, micEnabled = true, refreshMicrophone = false;
+let lastIceRestart = 0;
 let pendingIce = [];
 let sendQueue = Promise.resolve();
 const messages = new Map();
@@ -45,6 +47,7 @@ const ui = {
   browser: ['请复制邀请链接，用支持视频通话的浏览器打开。', 'Copy the invitation link and open it in a browser that supports video calls.'],
   allowMedia: ['请在浏览器的网站权限中允许麦克风和摄像头，再点加入。', 'Allow the microphone and camera in your browser’s site permissions, then try joining again.'],
   mediaUnavailable: ['无法使用麦克风或摄像头，请检查设备后重试。', 'Could not start the microphone or camera. Check your device and try again.'],
+  recoverMic: ['恢复麦克风', 'Restore microphone'],
   requestFailed: ['暂时无法连接通话服务，请重试。', 'Could not reach the call service. Please try again.'],
   refreshInvite: ['暂时无法读取邀请，请刷新重试。', 'Could not load the invitation. Refresh the page to try again.'],
   meOriginal: ['我 · 原话', 'Me · Original'],
@@ -225,7 +228,10 @@ async function createPeer() {
   const { data } = await api('ice');
   if (stopped) return;
   peer = new RTCPeerConnection({ iceServers: data.ice_servers });
-  stream.getTracks().forEach(track => peer.addTrack(track, stream));
+  for (const track of stream.getTracks()) {
+    const sender = peer.addTrack(track, stream);
+    if (track.kind === 'audio') audioSender = sender;
+  }
   const remote = new MediaStream();
   el('remote').srcObject = remote;
   peer.ontrack = event => remote.addTrack(event.track);
@@ -237,6 +243,7 @@ async function createPeer() {
   peer.onconnectionstatechange = () => {
     if (stopped) return;
     if (peer.connectionState === 'connected') {
+      lastIceRestart = 0;
       status('connected');
       label('emptyCaptions', 'speakToStart');
       asrStatus ||= '正在连接在线翻译…';
@@ -245,7 +252,7 @@ async function createPeer() {
     }
     if (peer.connectionState === 'disconnected' || peer.connectionState === 'failed') {
       status('reconnecting');
-      if (peer.connectionState === 'failed') signal('webrtc.restart.request', { negotiation_id: negotiation });
+      if (peer.connectionState === 'failed') requestIceRestart();
     }
   };
   peer.ondatachannel = ({ channel: incoming }) => {
@@ -275,6 +282,74 @@ async function createPeer() {
   status('connecting');
 }
 
+function requestIceRestart() {
+  if (document.hidden || !negotiation || Date.now() - lastIceRestart < 5000) return;
+  lastIceRestart = Date.now();
+  signal('webrtc.restart.request', { negotiation_id: negotiation });
+}
+
+function observeMicrophone(track) {
+  track?.addEventListener('ended', () => {
+    if (track !== stream?.getAudioTracks()[0] || stopped) return;
+    refreshMicrophone = true;
+    restoreMicrophone();
+  });
+}
+
+async function restoreMicrophone() {
+  if (stopped || document.hidden || microphoneRecovery || !stream || !micEnabled) return;
+  microphoneRecovery = true;
+  el('recoverMic').hidden = true;
+  let replacement;
+  try {
+    const fresh = await navigator.mediaDevices.getUserMedia({ audio: true });
+    replacement = fresh.getAudioTracks()[0];
+    if (!replacement) throw new Error('No microphone track');
+    if (stopped || document.hidden) return;
+    replacement.enabled = micEnabled;
+    const previous = stream.getAudioTracks()[0];
+    if (audioSender) await audioSender.replaceTrack(replacement);
+    if (stopped) return;
+    replacement.enabled = micEnabled;
+    if (previous) {
+      stream.removeTrack(previous);
+      previous.stop();
+    }
+    stream.addTrack(replacement);
+    observeMicrophone(replacement);
+    replacement = null;
+    refreshMicrophone = false;
+  } catch {
+    if (!stopped && !document.hidden && micEnabled) el('recoverMic').hidden = false;
+  } finally {
+    replacement?.stop();
+    microphoneRecovery = false;
+  }
+}
+
+function resumeCall() {
+  if (!token || stopped || document.hidden) return;
+  pollErrorSince = undefined;
+  schedulePoll(0);
+  if (peer && ['disconnected', 'failed'].includes(peer.connectionState)) requestIceRestart();
+  for (const id of ['remote', 'local']) {
+    const video = el(id);
+    if (video.srcObject && video.paused) video.play().catch(() => {});
+  }
+  sendLanguage('language', { language, revision });
+  if (refreshMicrophone) restoreMicrophone();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    refreshMicrophone = true;
+    clearTimeout(pollTimer);
+  } else resumeCall();
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted) resumeCall();
+});
+
 async function receive(event) {
   const data = event.payload;
   if (event.type === 'webrtc.offer') {
@@ -300,12 +375,14 @@ async function addIce(data) {
 function end(key, notify = false) {
   if (stopped) return;
   stopped = true;
+  clearTimeout(pollTimer);
   if (notify && token) api('end', { payload: {}, keepalive: true }).catch(() => {});
   if (channel) channel.close();
   if (peer) peer.close();
   if (stream) stream.getTracks().forEach(track => track.stop());
   el('media').hidden = true;
   el('controls').hidden = true;
+  el('recoverMic').hidden = true;
   el('emptyCaptions').hidden = true;
   asrStatus = '';
   renderAsr();
@@ -314,23 +391,37 @@ function end(key, notify = false) {
   status(key);
 }
 
+function schedulePoll(delay = 400) {
+  clearTimeout(pollTimer);
+  if (!stopped && !document.hidden) pollTimer = setTimeout(poll, delay);
+}
+
 async function poll() {
-  if (stopped) return;
+  if (stopped || polling || document.hidden) return;
+  polling = true;
   try {
     const data = await api('poll?after=' + cursor);
-    if (stopped) return;
+    if (stopped || document.hidden) return;
     if (data.state === 'ended') return end('ended');
     if (data.state === 'active' && !peer) await createPeer();
     for (const event of data.events) {
       await receive(event);
       cursor = event.seq;
     }
-    failures = 0;
+    if (pollErrorSince && peer?.connectionState === 'connected') status('connected');
+    pollErrorSince = undefined;
+    if (peer && ['disconnected', 'failed'].includes(peer.connectionState)) requestIceRestart();
   } catch (error) {
+    if (stopped || document.hidden) return;
     if (error.status === 410) return end(peer ? 'ended' : 'expired');
-    if (error.status === 403 || ++failures >= 8) return end('interrupted', true);
+    if (error.status === 403) return end('interrupted');
+    pollErrorSince ??= Date.now();
+    status('reconnecting');
+    if (Date.now() - pollErrorSince >= 30_000) return end('interrupted', true);
+  } finally {
+    polling = false;
+    schedulePoll();
   }
-  setTimeout(poll, 400);
 }
 
 async function join() {
@@ -343,6 +434,7 @@ async function join() {
     const result = await api('join', { auth: inviteToken, payload: { language } });
     token = result.token;
     inviteToken = undefined;
+    observeMicrophone(stream.getAudioTracks()[0]);
     history.replaceState(null, '', location.pathname + location.search);
     el('local').srcObject = stream;
     el('liveLanguage').value = language;
@@ -373,12 +465,18 @@ el('liveLanguage').onchange = () => {
   sendLanguage('language', { language, revision });
 };
 el('end').onclick = () => end('ended', true);
-window.addEventListener('pagehide', () => end('ended', true));
+window.addEventListener('pagehide', event => {
+  if (!event.persisted) end('ended', true);
+  else refreshMicrophone = true;
+});
+el('recoverMic').onclick = restoreMicrophone;
 el('mute').onclick = () => {
   const track = stream.getAudioTracks()[0];
-  if (!track) return;
-  track.enabled = !track.enabled;
-  label('mute', track.enabled ? 'mute' : 'unmute');
+  micEnabled = !micEnabled;
+  if (track) track.enabled = micEnabled;
+  label('mute', micEnabled ? 'mute' : 'unmute');
+  if (!micEnabled) el('recoverMic').hidden = true;
+  else if (refreshMicrophone || track?.readyState !== 'live' || track?.muted) restoreMicrophone();
 };
 el('camera').onclick = () => {
   const track = stream.getVideoTracks()[0];
