@@ -2,41 +2,63 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Kemi 视频翻译</title>
   <meta name="kemi-call-api" content="https://119.91.122.176">
-  <link rel="stylesheet" href="./call.css">
-  <script defer src="./call.js"></script>
+  <link rel="stylesheet" href="./call.css?v=2">
+  <script defer src="./call.js?v=2"></script>
 </head>
 <body>
 <main>
-  <header><strong>Kemi</strong><h1>视频翻译 · Video translation</h1></header>
-  <p id="status" role="status">正在读取邀请… / Loading invitation…</p>
+  <header class="topbar">
+    <h1 data-text="title">实时视频翻译</h1>
+    <button class="quiet locale" id="locale" type="button" aria-label="Switch interface language">English</button>
+  </header>
+  <p id="status" class="status" role="status">正在读取邀请…</p>
   <section id="setup">
-    <p>对方说 / They speak <strong id="hostLanguage">—</strong></p>
-    <label for="language">我说的语言 / I speak</label>
+    <p><span data-text="theySpeak">对方说</span> <strong id="hostLanguage">—</strong></p>
+    <label for="language" data-text="myLanguage">我说的语言</label>
     <select id="language" disabled></select>
-    <button id="join" disabled>加入通话 / Join call</button>
+    <button id="join" type="button" data-text="join" disabled>加入翻译通话</button>
+    <p class="hint" data-text="permissions">加入时，浏览器会请求使用麦克风和摄像头。</p>
   </section>
-  <section id="media" hidden>
-    <p>对方说 / They speak <strong id="liveHostLanguage">—</strong></p>
-    <div class="video">
-      <video id="remote" autoplay playsinline></video>
-      <video id="local" autoplay muted playsinline></video>
+  <div id="media" hidden>
+    <div class="language-bar">
+      <div class="my-language">
+        <label for="liveLanguage" data-text="iSpeak">我说</label>
+        <select id="liveLanguage" disabled></select>
+      </div>
+      <div class="peer-language"><span data-text="theySpeak">对方说</span> <strong id="liveHostLanguage">—</strong></div>
     </div>
-    <div class="controls">
-      <label for="liveLanguage">我说 / I speak</label>
-      <select id="liveLanguage" disabled></select>
-      <button id="mute" type="button">静音 / Mute</button>
-      <button id="camera" type="button">关闭镜头 / Camera off</button>
-      <button id="end" type="button">挂断 / End</button>
+    <div class="video-row">
+      <div class="video" id="video">
+        <video id="remote" autoplay playsinline></video>
+        <video id="local" autoplay muted playsinline></video>
+        <p id="videoCaption" hidden></p>
+      </div>
+      <div class="video-actions">
+        <button class="quiet" id="expandVideo" type="button" aria-controls="video" aria-expanded="false" data-text="expandVideo">放大视频</button>
+        <button class="quiet" id="hideVideo" type="button" aria-controls="video" aria-expanded="true" data-text="hideVideo">收起视频</button>
+      </div>
+    </div>
+  </div>
+  <section id="captions" aria-labelledby="captionsTitle" hidden>
+    <div class="caption-heading">
+      <h2 id="captionsTitle" data-text="captions">实时翻译</h2>
+      <p id="asr" role="status"></p>
+    </div>
+    <div id="messages" tabindex="0" aria-labelledby="captionsTitle">
+      <p id="emptyCaptions" class="hint" data-text="emptyCaptions">接通后，双方说的话会显示在这里。</p>
+    </div>
+    <div class="caption-footer">
+      <button id="follow" class="quiet" type="button" data-text="follow" hidden>回到最新</button>
     </div>
   </section>
-  <section id="captions" hidden>
-    <h2>实时字幕 / Live captions</h2>
-    <p id="asr" role="status"></p>
-    <div id="messages"></div>
-  </section>
+  <footer id="controls" class="controls" hidden>
+    <button class="quiet" id="mute" type="button" data-text="mute">静音</button>
+    <button class="quiet" id="camera" type="button" data-text="cameraOff">关闭镜头</button>
+    <button id="end" type="button" data-text="end">挂断</button>
+  </footer>
 </main>
 </body>
 </html>
