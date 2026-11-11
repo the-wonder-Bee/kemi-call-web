@@ -5,23 +5,39 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Kemi 视频翻译</title>
   <meta name="kemi-call-api" content="https://119.91.122.176">
-  <link rel="stylesheet" href="./call.css?v=3">
-  <script defer src="./call.js?v=3"></script>
+  <link rel="stylesheet" href="./call.css?v=4">
+  <script defer src="./call.js?v=4"></script>
 </head>
 <body>
+<svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-3 0h6"/></symbol>
+  <symbol id="icon-mic-off" viewBox="0 0 24 24"><path d="M3 3l18 18M9 9v3a3 3 0 0 0 5 2m1-4V5a3 3 0 0 0-5-2M5 10v2a7 7 0 0 0 12 5m2-5v-2M12 19v3m-3 0h6"/></symbol>
+  <symbol id="icon-video" viewBox="0 0 24 24"><rect x="2" y="5" width="13" height="14" rx="2"/><path d="m15 10 7-4v12l-7-4"/></symbol>
+  <symbol id="icon-video-off" viewBox="0 0 24 24"><path d="m3 3 18 18M7 5h6a2 2 0 0 1 2 2v3l7-4v12l-4-2M15 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7"/></symbol>
+  <symbol id="icon-end" viewBox="0 0 24 24"><path d="M4 16c-1.4-1-1.6-2.4-.4-3.5a12.8 12.8 0 0 1 16.8 0c1.2 1.1 1 2.5-.4 3.5l-2 .9c-.6.3-1.3.1-1.6-.5l-1.2-2.6a9 9 0 0 0-6.4 0l-1.2 2.6c-.3.6-1 .8-1.6.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></symbol>
+  <symbol id="icon-shrink" viewBox="0 0 24 24"><path d="M3 9h6V3m6 0v6h6M3 15h6v6m12-6h-6v6"/></symbol>
+  <symbol id="icon-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M13 12h5v5h-5z"/></symbol>
+  <symbol id="icon-hide" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 12h8"/></symbol>
+  <symbol id="icon-text" viewBox="0 0 24 24"><path d="M3 19 9 5l6 14m-10-5h8m4 5 3-8 3 8m-5-3h4"/></symbol>
+</svg>
 <main>
   <header class="topbar">
     <h1 data-text="title">实时视频翻译</h1>
-    <button class="quiet locale" id="locale" type="button" aria-label="Switch interface language">English</button>
+    <select class="locale" id="locale" aria-label="Interface language"></select>
   </header>
   <p id="status" class="status" role="status">正在读取邀请…</p>
   <button id="recoverMic" class="quiet recover-mic" type="button" data-text="recoverMic" hidden>恢复麦克风</button>
+  <button id="rejoin" class="quiet recover-mic" type="button" data-text="rejoin" hidden>返回通话</button>
   <section id="setup">
     <p><span data-text="theySpeak">对方说</span> <strong id="hostLanguage">—</strong></p>
     <label for="language" data-text="myLanguage">我说的语言</label>
     <select id="language" disabled></select>
+    <label for="guestName" data-text="guestName">你的名字（选填）</label>
+    <input id="guestName" maxlength="40" autocomplete="off">
+    <label class="camera-choice"><input id="joinCamera" type="checkbox"><span data-text="joinCamera">加入时打开摄像头</span></label>
     <button id="join" type="button" data-text="join" disabled>加入翻译通话</button>
-    <p class="hint" data-text="permissions">加入时，浏览器会请求使用麦克风和摄像头。</p>
+    <p class="hint" data-text="permissions">你的语音会发送给在线识别和翻译服务，用于生成字幕。摄像头可选。</p>
   </section>
   <div id="media" hidden>
     <div class="language-bar">
@@ -38,27 +54,33 @@
         <p id="videoCaption" hidden></p>
       </div>
       <div class="video-actions">
-        <button class="quiet" id="expandVideo" type="button" aria-controls="video" aria-expanded="false" data-text="expandVideo">放大视频</button>
-        <button class="quiet" id="hideVideo" type="button" aria-controls="video" aria-expanded="true" data-text="hideVideo">收起视频</button>
+        <button class="quiet icon-button" id="expandVideo" type="button" aria-controls="video" aria-expanded="false" data-icon-label="expandVideo"><svg aria-hidden="true"><use href="#icon-expand"/></svg></button>
+        <button class="quiet icon-button" id="hideVideo" type="button" aria-controls="video" aria-expanded="true" data-icon-label="hideVideo"><svg aria-hidden="true"><use href="#icon-hide"/></svg></button>
       </div>
     </div>
   </div>
   <section id="captions" aria-labelledby="captionsTitle" hidden>
     <div class="caption-heading">
       <h2 id="captionsTitle" data-text="captions">实时翻译</h2>
-      <p id="asr" role="status"></p>
+      <button class="quiet icon-button" id="captionOptions" type="button" aria-controls="captionSettings" aria-expanded="false" data-icon-label="captionOptions"><svg aria-hidden="true"><use href="#icon-text"/></svg></button>
     </div>
+    <div id="captionSettings" class="caption-settings" hidden>
+      <label><input id="onlyTranslation" type="checkbox"><span data-text="onlyTranslation">仅看译文</span></label>
+      <label><input id="largeCaptions" type="checkbox"><span data-text="largeCaptions">大字字幕</span></label>
+    </div>
+    <p id="asr" role="status"></p>
     <div id="messages" tabindex="0" aria-labelledby="captionsTitle">
       <p id="emptyCaptions" class="hint" data-text="emptyCaptions">接通后，双方说的话会显示在这里。</p>
     </div>
     <div class="caption-footer">
       <button id="follow" class="quiet" type="button" data-text="follow" hidden>回到最新</button>
+      <a id="saveCaptions" class="quiet transcript-download" download="kemi-transcript.txt" data-text="saveCaptions" hidden>保存字幕</a>
     </div>
   </section>
   <footer id="controls" class="controls" hidden>
-    <button class="quiet" id="mute" type="button" data-text="mute">静音</button>
-    <button class="quiet" id="camera" type="button" data-text="cameraOff">关闭镜头</button>
-    <button id="end" type="button" data-text="end">挂断</button>
+    <button class="quiet icon-button" id="mute" type="button" aria-pressed="false" data-icon-label="mute"><svg aria-hidden="true"><use href="#icon-mic"/></svg></button>
+    <button class="quiet icon-button" id="camera" type="button" aria-pressed="false" data-icon-label="cameraOn"><svg aria-hidden="true"><use href="#icon-video-off"/></svg></button>
+    <button class="icon-button" id="end" type="button" data-icon-label="end"><svg aria-hidden="true"><use href="#icon-end"/></svg></button>
   </footer>
 </main>
 </body>
